@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MuscleMap</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<!-- Firebase SDK (ES module loaded as module script) -->
+<script type="module">
+  import { initializeApp }      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, deleteField }
+                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const cfg = {
+    apiKey:            "AIzaSyADUqiBEXD25OCZ5QBMvvRlcOo8gYY0M5E",
+    authDomain:        "muscle-map-7ce92.firebaseapp.com",
+    projectId:         "muscle-map-7ce92",
+    storageBucket:     "muscle-map-7ce92.firebasestorage.app",
+    messagingSenderId: "998613405499",
+    appId:             "1:998613405499:web:dd7ce9b6ef372c58f4311e",
+    measurementId:     "G-0DG49MXDS8",
+  };
+
+  const app = initializeApp(cfg);
+  const db  = getFirestore(app);
+
+  window.__fb = {
+    async loadMonth(y, m) {
+      try {
+        const snap = await getDoc(doc(db, "musclemap", `${y}_${m}`));
+        return snap.exists() ? snap.data() : {};
+      } catch (e) { console.warn("FB load error:", e); return null; }
+    },
+    async saveDay(y, m, day, entry) {
+      try {
+        const ref  = doc(db, "musclemap", `${y}_${m}`);
+        const data = entry ? { [day]: entry } : { [day]: deleteField() };
+        await setDoc(ref, data, { merge: true });
+      } catch (e) { console.warn("FB save error:", e); }
+    },
+    async saveMeta(meta) {
+      try {
+        await setDoc(doc(db, "musclemap", "__meta"), meta, { merge: true });
+      } catch (e) { console.warn("FB meta save:", e); }
+    },
+    async loadMeta() {
+      try {
+        const snap = await getDoc(doc(db, "musclemap", "__meta"));
+        return snap.exists() ? snap.data() : null;
+      } catch (e) { return null; }
+    },
+  };
+
+  // Signal React that Firebase is ready
+  window.dispatchEvent(new Event("fb-ready"));
+</script>
+
+<style>
+/* ════ RESET ════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+button{font-family:inherit;cursor:pointer}
+
+/* ════ VARIABLES ════════════════════════════════ */
+:root{
+  --bg:#f7f7f6; --sf:#ffffff; --sf2:#f1f1ef; --sf3:#e9e9e7;
+  --ln:#e4e4e1; --ln2:#d0d0cc;
+  --tx:#0b0b0a; --tx2:#3c3c3a; --tx3:#888884; --tx4:#b8b8b4;
+  --wh:#ffffff; --bk:#0b0b0a;
+  --sh1:0 1px 3px rgba(0,0,0,.05),0 1px 2px rgba(0,0,0,.04);
+  --sh2:0 4px 16px rgba(0,0,0,.07),0 1px 4px rgba(0,0,0,.04);
+  --sh3:0 16px 48px rgba(0,0,0,.10),0 4px 12px rgba(0,0,0,.05);
+  --shX:0 32px 80px rgba(0,0,0,.14);
+  --rXS:6px;--rS:10px;--rM:16px;--rL:22px;--rXL:30px;
+  --fD:'DM Serif Display',Georgia,serif;
+  --fB:'Outfit',-apple-system,sans-serif;
+  --spring:cubic-bezier(.34,1.56,.64,1);
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+html.dark{
+  --bg:#0c0c0b; --sf:#151514; --sf2:#1c1c1b; --sf3:#232322;
+  --ln:#252523; --ln2:#303030;
+  --tx:#eeeeed; --tx2:#c4c4c0; --tx3:#646460; --tx4:#383836;
+  --wh:#151514; --bk:#eeeeed;
+  --sh1:0 1px 3px rgba(0,0,0,.5);
+  --sh2:0 4px 16px rgba(0,0,0,.55);
+  --sh3:0 16px 48px rgba(0,0,0,.6);
+  --shX:0 32px 80px rgba(0,0,0,.7);
+}
+
+/* ════ BASE ════════════════════════════════════ */
+html,body{min-height:100vh;background:var(--bg);color:var(--tx);font-family:var(--fB);-webkit-font-smoothing:antialiased;transition:background .3s,color .3s}
+#root{min-height:100vh}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--ln2);border-radius:4px}
+
+/* ════ ANIMATIONS ═══════════════════════════════ */
+@keyframes fadeUp  {from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn  {from{opacity:0}to{opacity:1}}
+@keyframes scaleIn {from{opacity:0;transform:scale(.93) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes pulse   {0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+@keyframes spin    {to{transform:rotate(360deg)}}
+@keyframes shimmer {0%,100%{opacity:.4}50%{opacity:.9}}
+
+.fu {animation:fadeUp  .45s var(--ease) both}
+.si {animation:scaleIn .3s  var(--spring) both}
+.fi {animation:fadeIn  .22s ease both}
+
+/* ════ HEADER ═══════════════════════════════════ */
+.hdr{
+  position:sticky;top:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 clamp(14px,4vw,40px);height:62px;
+  background:color-mix(in srgb,var(--bg) 80%,transparent);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--ln);
+  transition:background .3s;
+}
+.logo{display:flex;align-items:baseline;gap:4px}
+.logo-i{font-family:var(--fD);font-style:italic;font-size:1.35rem;color:var(--tx);letter-spacing:-.2px}
+.logo-b{font-family:var(--fB);font-weight:800;font-size:.95rem;color:var(--tx);letter-spacing:-.4px}
+.logo-d{width:5px;height:5px;border-radius:50%;background:var(--tx);margin-bottom:2px}
+
+.hdr-r{display:flex;align-items:center;gap:14px}
+
+/* streak */
+.strk{display:flex;flex-direction:column;align-items:flex-end;cursor:default;user-select:none}
+.strk-main{display:flex;align-items:center;gap:5px;font-weight:700;font-size:.92rem;color:var(--tx);line-height:1}
+.strk-sub{font-size:.6rem;color:var(--tx3);margin-top:2px;letter-spacing:.3px}
+.strk-pulse{animation:pulse .5s var(--spring)}
+
+/* toggle */
+.tog{width:40px;height:22px;border-radius:99px;border:none;position:relative;transition:background .3s}
+.tog-t{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.52rem;transition:left .25s var(--spring)}
+
+/* ════ MOTIVATION BAR ═══════════════════════════ */
+.motiv{text-align:center;padding:11px 20px;font-size:.76rem;color:var(--tx3);font-style:italic;letter-spacing:.2px;border-bottom:1px solid var(--ln)}
+
+/* ════ SUMMARY BAR ══════════════════════════════ */
+.sbar{display:flex;align-items:center;justify-content:center;gap:clamp(12px,4vw,36px);padding:12px 20px;border-bottom:1px solid var(--ln);flex-wrap:wrap}
+.si-item{display:flex;align-items:center;gap:6px}
+.si-ico{font-size:.8rem}
+.si-val{font-weight:700;font-size:.88rem;color:var(--tx)}
+.si-lbl{font-size:.68rem;color:var(--tx3);font-weight:500}
+.si-div{width:1px;height:14px;background:var(--ln2)}
+
+/* ════ GOAL BAR ═════════════════════════════════ */
+.gbar{display:flex;align-items:center;justify-content:space-between;padding:9px clamp(14px,4vw,40px);border-bottom:1px solid var(--ln);flex-wrap:wrap;gap:8px}
+.g-txt{font-size:.72rem;color:var(--tx3);font-weight:500}
+.g-track{flex:1;max-width:180px;min-width:70px;height:3px;background:var(--ln);border-radius:99px;overflow:hidden}
+.g-fill{height:100%;background:var(--tx);border-radius:99px;transition:width .9s var(--spring)}
+.g-edit{background:none;border:none;font-size:.62rem;color:var(--tx4);text-decoration:underline;font-family:var(--fB);padding:0;transition:color .15s}
+.g-edit:hover{color:var(--tx3)}
+
+/* ════ MAIN ═════════════════════════════════════ */
+main{max-width:860px;margin:0 auto;padding:clamp(18px,4vw,40px) clamp(12px,3vw,28px) 100px}
+
+/* ════ CALENDAR NAV ═════════════════════════════ */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.cal-month{font-family:var(--fD);font-style:italic;font-size:clamp(1.45rem,4vw,2rem);color:var(--tx);line-height:1}
+.cal-yr{font-family:var(--fB);font-style:normal;font-weight:300;font-size:.5em;color:var(--tx3)}
+.cal-r{display:flex;align-items:center;gap:8px}
+.nbtn{width:32px;height:32px;border-radius:var(--rS);border:1px solid var(--ln);background:var(--sf);color:var(--tx2);font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:background .16s,border-color .16s}
+.nbtn:hover{background:var(--sf2);border-color:var(--ln2)}
+.rbtn{background:transparent;border:1px solid var(--ln);border-radius:99px;padding:6px 14px;font-size:.66rem;color:var(--tx3);font-family:var(--fB);transition:border-color .16s,color .16s}
+.rbtn:hover{border-color:var(--tx3);color:var(--tx)}
+
+/* ════ CAL CARD ═════════════════════════════════ */
+.cal-card{background:var(--sf);border:1px solid var(--ln);border-radius:var(--rXL);box-shadow:var(--sh2);padding:clamp(14px,3vw,26px);margin-bottom:16px}
+.wdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}
+.wday{text-align:center;font-size:.58rem;font-weight:700;color:var(--tx4);letter-spacing:.9px;text-transform:uppercase;padding:3px 0}
+.dgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:clamp(3px,1vw,7px)}
+
+/* ════ DAY CELL ═════════════════════════════════ */
+.dc{
+  aspect-ratio:1;border-radius:var(--rS);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  border:1px solid transparent;position:relative;min-height:34px;
+  transition:transform .16s var(--spring),box-shadow .16s,background .18s,border-color .18s;
+  user-select:none;
+}
+.dc:not(.dc-e):not(.dc-f){cursor:pointer}
+.dc:not(.dc-e):not(.dc-f):hover{transform:scale(1.07);box-shadow:var(--sh2);z-index:2;border-color:var(--ln2)!important}
+.dc-e{pointer-events:none}
+.dc-f{opacity:.28;pointer-events:none}
+.dc-today{border-color:var(--tx)!important;box-shadow:0 0 0 1.5px var(--tx)}
+.dc-gym {background:var(--tx)}
+.dc-skip{background:var(--sf2);border-color:var(--ln)!important}
+.dc-rest{background:var(--sf);border:1px dashed var(--ln2)!important}
+
+.dc-num{font-weight:600;font-size:clamp(.58rem,1.7vw,.78rem);line-height:1;color:var(--tx2)}
+.dc-gym  .dc-num{color:var(--bg)}
+.dc-skip .dc-num{color:var(--tx3)}
+
+.dc-ind{font-size:clamp(.48rem,1.3vw,.6rem);line-height:1}
+.dc-gym  .dc-ind{color:rgba(255,255,255,.65)}
+.dc-skip .dc-ind,.dc-rest .dc-ind{color:var(--tx4)}
+
+.dc-tdot{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--tx)}
+.dc-gym .dc-tdot{background:var(--bg)}
+
+.wtags{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;margin-top:1px}
+.wtag{font-size:.38rem;font-weight:700;letter-spacing:.3px;padding:1px 3px;border-radius:3px;color:rgba(255,255,255,.8);background:rgba(255,255,255,.18)}
+
+/* ════ CAL LEGEND ═══════════════════════════════ */
+.c-leg{display:flex;gap:12px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.l-item{display:flex;align-items:center;gap:5px;font-size:.62rem;color:var(--tx3);font-weight:500}
+.l-dot{width:8px;height:8px;border-radius:2px}
+
+/* ════ INSIGHT ══════════════════════════════════ */
+.insight{text-align:center;padding:10px 20px 0;font-size:.73rem;color:var(--tx3);font-style:italic;letter-spacing:.1px}
+
+/* ════ OVERLAY + MODAL ══════════════════════════ */
+.overlay{
+  position:fixed;inset:0;z-index:300;
+  background:rgba(0,0,0,.38);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:fadeIn .18s ease;
+}
+.modal{
+  background:var(--sf);border:1px solid var(--ln);
+  border-radius:var(--rXL);padding:24px;width:min(360px,100%);
+  box-shadow:var(--shX);
+  animation:scaleIn .28s var(--spring);
+}
+.m-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+.m-title{font-family:var(--fD);font-style:italic;font-size:1.4rem;color:var(--tx);line-height:1}
+.m-sub{font-size:.68rem;color:var(--tx3);margin-top:4px}
+.m-x{width:28px;height:28px;border-radius:50%;border:none;background:var(--sf2);color:var(--tx3);font-size:.88rem;display:flex;align-items:center;justify-content:center;transition:background .14s;flex-shrink:0}
+.m-x:hover{background:var(--sf3)}
+
+/* status options */
+.m-opts{display:flex;flex-direction:column;gap:7px}
+.m-opt{
+  display:flex;align-items:center;gap:11px;padding:12px 14px;
+  border-radius:var(--rM);border:1px solid var(--ln);background:var(--wh);
+  transition:border-color .16s,transform .16s,background .16s;text-align:left;width:100%;
+}
+.m-opt:hover{border-color:var(--ln2);transform:translateX(3px)}
+.m-opt.m-sel{border:2px solid var(--tx);background:var(--tx)}
+.o-ico{font-size:1.05rem;flex-shrink:0;width:22px;text-align:center}
+.o-lbl{font-weight:600;font-size:.84rem;color:var(--tx)}
+.o-dsc{font-size:.67rem;color:var(--tx3);margin-top:1px}
+.m-opt.m-sel .o-lbl{color:var(--bg)}
+.m-opt.m-sel .o-dsc{color:rgba(255,255,255,.5)}
+.m-clr{width:100%;padding:9px;border-radius:var(--rM);border:1px solid var(--ln);background:transparent;font-family:var(--fB);font-size:.7rem;color:var(--tx3);transition:color .14s,border-color .14s;margin-top:3px}
+.m-clr:hover{border-color:var(--tx3);color:var(--tx)}
+
+/* workout grid */
+.wo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:14px}
+@media(max-width:340px){.wo-grid{grid-template-columns:repeat(3,1fr)}}
+.wo-chip{
+  border:1px solid var(--ln);border-radius:var(--rS);
+  padding:10px 4px;text-align:center;background:var(--wh);position:relative;
+  font-size:.7rem;font-weight:600;color:var(--tx2);
+  transition:all .18s var(--spring);
+}
+.wo-chip:hover{border-color:var(--ln2);transform:scale(1.04)}
+.wo-chip.wo-sel{background:var(--tx);color:var(--bg);border-color:var(--tx);transform:scale(1.04)}
+.wo-ck{position:absolute;top:3px;right:4px;font-size:.5rem;color:rgba(255,255,255,.7)}
+.wo-ic{font-size:1.05rem;display:block;margin-bottom:2px}
+
+/* save button */
+.sv-btn{width:100%;padding:11px;border-radius:var(--rM);border:none;background:var(--tx);color:var(--bg);font-family:var(--fB);font-weight:600;font-size:.82rem;transition:opacity .16s,transform .16s}
+.sv-btn:hover{opacity:.88;transform:scale(.99)}
+.sv-btn:active{transform:scale(.97)}
+
+/* ════ FAB ══════════════════════════════════════ */
+.fab{
+  position:fixed;bottom:26px;right:22px;z-index:200;
+  display:flex;align-items:center;gap:7px;
+  background:var(--tx);color:var(--bg);
+  border:none;border-radius:99px;padding:12px 20px;
+  font-family:var(--fB);font-weight:600;font-size:.8rem;
+  box-shadow:var(--sh3);
+  transition:transform .2s var(--spring),box-shadow .2s;
+}
+.fab:hover{transform:scale(1.05) translateY(-2px);box-shadow:var(--shX)}
+.fab:active{transform:scale(.97)}
+.fab-plus{font-size:1.1rem;line-height:1}
+
+/* ════ SPINNER ══════════════════════════════════ */
+.spin{display:inline-block;width:18px;height:18px;border:2px solid var(--ln);border-top-color:var(--tx);border-radius:50%;animation:spin .7s linear infinite}
+
+/* ════ RESPONSIVE ════════════════════════════════ */
+@media(max-width:480px){
+  .hdr{height:54px}
+  .logo-i{font-size:1.15rem}
+  .strk-sub{display:none}
+  .si-div{display:none}
+  .sbar{gap:10px}
+}
+</style>
+</head>
+<body>
+<div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888;font-size:.8rem">Loading MuscleMap…</div></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ═══ CONSTANTS ════════════════════════════════ */
+const MONTHS    = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAYS_SH   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const FULL_DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const QUOTES = [
+  "Discipline beats motivation.",
+  "Your only competition is yesterday's you.",
+  "One more rep. Always one more.",
+  "Consistency over intensity.",
+  "Rest is part of the process.",
+  "Show up. That's 80% of it.",
+  "Strength is built in the quiet moments.",
+  "No shortcuts. No excuses.",
+  "Every session is a deposit into your future self.",
+  "The gym doesn't care about your mood. Go anyway.",
+  "Make the hard choice every day.",
+  "Small progress is still progress.",
+  "You won't regret the workout. You will regret skipping it.",
+  "Pain is temporary. Gains are permanent.",
+];
+const WORKOUTS = [
+  {k:"chest",     l:"Chest",     i:"💪"},
+  {k:"back",      l:"Back",      i:"🔗"},
+  {k:"legs",      l:"Legs",      i:"🦵"},
+  {k:"shoulders", l:"Shoulders", i:"🏋️"},
+  {k:"biceps",    l:"Biceps",    i:"💥"},
+  {k:"triceps",   l:"Triceps",   i:"⚡"},
+  {k:"cardio",    l:"Cardio",    i:"🏃"},
+  {k:"core",      l:"Core",      i:"🔥"},
+];
+const WO_SHORT = {chest:"CH",back:"BK",legs:"LG",shoulders:"SH",biceps:"BI",triceps:"TR",cardio:"CA",core:"CO"};
+const STATUS_SYM = {gym:"●", skip:"○", rest:"—"};
+
+/* ═══ STORAGE HELPERS ══════════════════════════ */
+const lk  = (y,m) => `mm3_${y}_${m}`;
+const lkm = () => "mm3_meta";
+const lsGet = (k,fb={}) => { try{const r=localStorage.getItem(k);return r?JSON.parse(r):fb;}catch{return fb;} };
+const lsSet = (k,v)      => { try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
+
+/* ═══ FIREBASE BRIDGE ══════════════════════════ */
+async function fbLoad(y, m) {
+  if (!window.__fb) return null;
+  return window.__fb.loadMonth(y, m);
+}
+async function fbSaveDay(y, m, day, entry) {
+  if (!window.__fb) return;
+  return window.__fb.saveDay(y, m, day, entry || null);
+}
+async function fbSaveMeta(meta) {
+  if (!window.__fb) return;
+  return window.__fb.saveMeta(meta);
+}
+async function fbLoadMeta() {
+  if (!window.__fb) return null;
+  return window.__fb.loadMeta();
+}
+
+/* ═══ STREAK CALCULATOR ════════════════════════ */
+function calcStreak(data, y, m) {
+  const today = new Date();
+  const isNow = y===today.getFullYear() && m===today.getMonth();
+  const last  = isNow ? today.getDate() : new Date(y, m+1, 0).getDate();
+  let s = 0;
+  for (let d = last; d >= 1; d--) {
+    const v = data[String(d)]?.status;
+    if (v==='gym')  { s++; continue; }
+    if (v==='rest') { continue; }       // rest preserves streak
+    break;
+  }
+  return s;
+}
+
+/* ═══ SMART INSIGHT ════════════════════════════ */
+function getInsight(data, month) {
+  const today  = new Date();
+  const isNow  = month === today.getMonth();
+  const entries= Object.entries(data);
+  const gymDays= entries.filter(([,v])=>v?.status==='gym');
+  const skipDays=entries.filter(([,v])=>v?.status==='skip');
+
+  if (gymDays.length===0) return "Start today — every streak begins with one session.";
+  if (skipDays.length===0 && gymDays.length>3) return "Zero skips so far. Flawless 💪";
+
+  // best day of week
+  const dowCount = {};
+  gymDays.forEach(([d])=>{
+    const dow = new Date(today.getFullYear(), month, parseInt(d)).getDay();
+    dowCount[dow] = (dowCount[dow]||0)+1;
+  });
+  const bestDow = Object.entries(dowCount).sort((a,b)=>b[1]-a[1])[0];
+  if (bestDow && parseInt(bestDow[1])>=2)
+    return `You perform best on ${FULL_DAYS[parseInt(bestDow[0])]}s 💪`;
+
+  // recent weekly skip count
+  if (isNow) {
+    const ws = today.getDate() - today.getDay();
+    const wskips = Array.from({length:today.getDay()+1},(_,i)=>ws+i)
+      .filter(d=>data[String(d)]?.status==='skip').length;
+    if (wskips>=2) return `${wskips} skips this week — finish strong.`;
+  }
+
+  if (gymDays.length>=15) return "Top tier month. You're locked in 🏆";
+  return `${gymDays.length} sessions logged. Keep stacking.`;
+}
+
+/* ═══════════════════════════════════════════════
+   COMPONENTS
+═══════════════════════════════════════════════ */
+
+/* Header */
+function Header({ dark, setDark, streak, best }) {
+  const [pulsing, setPulsing] = useState(false);
+  const prev = useRef(streak);
+  useEffect(()=>{ if(streak>prev.current){setPulsing(true);setTimeout(()=>setPulsing(false),600);} prev.current=streak; },[streak]);
+  return (
+    <header className="hdr">
+      <div className="logo">
+        <span className="logo-i">Muscle</span>
+        <span className="logo-b">Map</span>
+        <span className="logo-d"/>
+      </div>
+      <div className="hdr-r">
+        <div className="strk">
+          <div className={`strk-main${pulsing?' strk-pulse':''}`}>
+            <span>🔥</span><span>{streak}</span>
+          </div>
+          <div className="strk-sub">Best: {best}</div>
+        </div>
+        <button className="tog" onClick={()=>setDark(d=>!d)}
+          style={{background:dark?'var(--tx)':'var(--ln2)'}}
+          aria-label="Toggle dark mode">
+          <div className="tog-t" style={{left:dark?21:3,background:dark?'var(--bg)':'var(--tx)'}}>{dark?'☽':'○'}</div>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/* Status Modal */
+function StatusModal({ day, month, year, current, onSelect, onClose }) {
+  const dow = new Date(year, month, day).getDay();
+  const opts = [
+    {s:'gym',  i:'✅', l:'Gym Done',  d:'Session completed'},
+    {s:'rest', i:'😴', l:'Rest Day',  d:"Recovery — streak stays intact"},
+    {s:'skip', i:'❌', l:'Skipped',   d:'Missed — resets streak'},
+  ];
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal si">
+        <div className="m-hdr">
+          <div>
+            <div className="m-title">{FULL_DAYS[dow]}</div>
+            <div className="m-sub">{MONTHS[month]} {day}, {year}</div>
+          </div>
+          <button className="m-x" onClick={onClose}>✕</button>
+        </div>
+        <div className="m-opts">
+          {opts.map(o=>(
+            <button key={o.s} className={`m-opt${current===o.s?' m-sel':''}`} onClick={()=>onSelect(o.s)}>
+              <span className="o-ico">{o.i}</span>
+              <div>
+                <div className="o-lbl">{o.l}</div>
+                <div className="o-dsc">{o.d}</div>
+              </div>
+              {current===o.s && <span style={{marginLeft:'auto',color:'rgba(255,255,255,.65)',fontSize:'.8rem'}}>✓</span>}
+            </button>
+          ))}
+          {current && <button className="m-clr" onClick={()=>onSelect('')}>Clear entry</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Workout Modal */
+function WorkoutModal({ day, month, year, initSelected, onSave, onClose }) {
+  const [picked, setPicked] = useState(initSelected||[]);
+  const toggle = k => setPicked(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal si">
+        <div className="m-hdr">
+          <div>
+            <div className="m-title">Select Workout</div>
+            <div className="m-sub">{MONTHS[month]} {day} · Multi-select</div>
+          </div>
+          <button className="m-x" onClick={onClose}>✕</button>
+        </div>
+        <div className="wo-grid">
+          {WORKOUTS.map(w=>(
+            <div key={w.k} className={`wo-chip${picked.includes(w.k)?' wo-sel':''}`} onClick={()=>toggle(w.k)} role="button">
+              {picked.includes(w.k) && <span className="wo-ck">✓</span>}
+              <span className="wo-ic">{w.i}</span>
+              {w.l}
+            </div>
+          ))}
+        </div>
+        <button className="sv-btn" onClick={()=>onSave(picked)}>
+          Save{picked.length>0?` · ${picked.length} selected`:''}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Day Cell */
+function DayCell({ day, entry, isToday, isFuture, isEmpty, onClick }) {
+  if (isEmpty) return <div className="dc dc-e"/>;
+  const s   = entry?.status||'';
+  const wos = entry?.workouts||[];
+  const cls = ['dc', s?`dc-${s}`:'', isToday?'dc-today':'', isFuture?'dc-f':''].filter(Boolean).join(' ');
+  return (
+    <div className={cls} onClick={onClick} role="button" tabIndex={isFuture?-1:0}
+      onKeyDown={e=>e.key==='Enter'&&onClick&&onClick()}>
+      <span className="dc-num">{day}</span>
+      {s && <span className="dc-ind">{STATUS_SYM[s]}</span>}
+      {s==='gym' && wos.length>0 && (
+        <div className="wtags">
+          {wos.slice(0,2).map(k=><span key={k} className="wtag">{WO_SHORT[k]||k.slice(0,2).toUpperCase()}</span>)}
+          {wos.length>2&&<span className="wtag">+{wos.length-2}</span>}
+        </div>
+      )}
+      {isToday && <div className="dc-tdot"/>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   APP
+═══════════════════════════════════════════════ */
+function App() {
+  const now = new Date();
+
+  /* ── state ── */
+  const [dark, setDarkRaw] = useState(()=>lsGet('mm3_dark',false));
+  const [vy, setVY]  = useState(now.getFullYear());
+  const [vm, setVM]  = useState(now.getMonth());
+  const [data, setData]   = useState({});
+  const [loading, setLd]  = useState(true);
+  const [saving, setSaving]= useState(false);
+  const [modal, setModal] = useState(null); // {day, mode:'status'|'workout'}
+  const [meta, setMetaRaw]= useState(()=>lsGet(lkm(),{streak:0,best:0,goal:20}));
+  const [fbReady, setFbReady] = useState(!!window.__fb);
+
+  const quote = QUOTES[(now.getDate()+now.getMonth()*31)%QUOTES.length];
+
+  /* ── dark mode ── */
+  function setDark(fn) {
+    setDarkRaw(prev=>{
+      const next = typeof fn==='function'?fn(prev):fn;
+      document.documentElement.classList.toggle('dark',next);
+      lsSet('mm3_dark',next);
+      return next;
+    });
+  }
+  useEffect(()=>{ document.documentElement.classList.toggle('dark',dark); },[]);
+
+  /* ── firebase ready listener ── */
+  useEffect(()=>{
+    if (window.__fb) { setFbReady(true); return; }
+    const handler = ()=>setFbReady(true);
+    window.addEventListener('fb-ready', handler);
+    return ()=>window.removeEventListener('fb-ready', handler);
+  },[]);
+
+  /* ── load month data ── */
+  useEffect(()=>{
+    let cancelled = false;
+    setLd(true);
+    (async()=>{
+      // Try Firebase first (when ready), fallback to localStorage
+      let d = null;
+      if (fbReady) d = await fbLoad(vy, vm);
+      if (d===null) d = lsGet(lk(vy,vm),{});
+      // normalize all keys to string
+      const norm = {};
+      Object.entries(d||{}).forEach(([k,v])=>{ if(v&&v.status) norm[String(k)]=v; });
+      if (!cancelled) { setData(norm); setLd(false); }
+    })();
+    return ()=>{ cancelled=true; };
+  },[vy,vm,fbReady]);
+
+  /* ── load meta ── */
+  useEffect(()=>{
+    if (!fbReady) return;
+    (async()=>{
+      const fm = await fbLoadMeta();
+      if (fm) { setMetaRaw(fm); lsSet(lkm(),fm); }
+    })();
+  },[fbReady]);
+
+  /* ── persist day ── */
+  async function persistDay(dayKey, entry) {
+    setSaving(true);
+    const next = { ...data };
+    if (!entry || !entry.status) { delete next[dayKey]; entry=null; }
+    else next[dayKey] = entry;
+    setData(next);
+    lsSet(lk(vy,vm), next);
+    await fbSaveDay(vy, vm, dayKey, entry);
+
+    // update streak & meta
+    const streak = calcStreak(next, vy, vm);
+    const best   = Math.max(meta.best||0, streak);
+    const newMeta = {...meta, streak, best};
+    setMetaRaw(newMeta);
+    lsSet(lkm(),newMeta);
+    fbSaveMeta(newMeta);
+    setSaving(false);
+  }
+
+  /* ── calendar math ── */
+  const firstDow    = new Date(vy,vm,1).getDay();
+  const daysInMonth = new Date(vy,vm+1,0).getDate();
+  const isNow = vm===now.getMonth() && vy===now.getFullYear();
+
+  function prevMonth(){ if(vm===0){setVM(11);setVY(y=>y-1);}else setVM(m=>m-1); }
+  function nextMonth(){ if(vm===11){setVM(0);setVY(y=>y+1);}else setVM(m=>m+1); }
+
+  /* ── stats ── */
+  const { gym, skip, rest, consistency } = useMemo(()=>{
+    const vals=Object.values(data);
+    const g=vals.filter(v=>v?.status==='gym').length;
+    const s=vals.filter(v=>v?.status==='skip').length;
+    const r=vals.filter(v=>v?.status==='rest').length;
+    return {gym:g,skip:s,rest:r,consistency:(g+s)>0?Math.round(g/(g+s)*100):0};
+  },[data]);
+
+  const streak  = useMemo(()=>calcStreak(data,vy,vm),[data,vy,vm]);
+  const insight = useMemo(()=>getInsight(data,vm),[data,vm]);
+  const pctGoal = Math.min(100,Math.round(gym/(meta.goal||20)*100));
+
+  /* ── modal handlers ── */
+  function openDay(day) {
+    if (isNow && day>now.getDate()) return;
+    if (!isNow && new Date(vy,vm,day)>now) return;
+    setModal({day, mode:'status'});
+  }
+
+  async function handleStatusSelect(status) {
+    if (status==='') {
+      await persistDay(String(modal.day), null);
+      setModal(null); return;
+    }
+    if (status==='gym') {
+      // keep day, switch to workout picker
+      setModal({day:modal.day, mode:'workout'});
+    } else {
+      await persistDay(String(modal.day), {status, workouts:[]});
+      setModal(null);
+    }
+  }
+
+  async function handleWorkoutSave(workouts) {
+    await persistDay(String(modal.day), {status:'gym', workouts});
+    setModal(null);
+  }
+
+  function markToday() {
+    if (!isNow) return;
+    const cur = data[String(now.getDate())];
+    if (cur?.status==='gym') setModal({day:now.getDate(), mode:'workout'});
+    else setModal({day:now.getDate(), mode:'status'});
+  }
+
+  function editGoal() {
+    const g = window.prompt('Set monthly gym goal (days):', meta.goal||20);
+    if (g && !isNaN(parseInt(g))) {
+      const nm={...meta,goal:Math.max(1,parseInt(g))};
+      setMetaRaw(nm); lsSet(lkm(),nm); fbSaveMeta(nm);
+    }
+  }
+
+  function resetMonth() {
+    if (!window.confirm(`Reset all data for ${MONTHS[vm]} ${vy}?`)) return;
+    setData({}); lsSet(lk(vy,vm),{});
+    if(window.__fb) window.__fb.saveDay(vy,vm,'__reset',{ts:Date.now()});
+  }
+
+  /* ── render ── */
+  return (
+    <>
+      <Header dark={dark} setDark={setDark} streak={streak} best={meta.best||0}/>
+
+      {/* Motivation */}
+      <div className="motiv">"{quote}"</div>
+
+      {/* Summary bar */}
+      <div className="sbar">
+        <div className="si-item"><span className="si-ico">✔</span><span className="si-val">{gym}</span><span className="si-lbl">Gym Days</span></div>
+        <div className="si-div"/>
+        <div className="si-item"><span className="si-ico">✖</span><span className="si-val">{skip}</span><span className="si-lbl">Skips</span></div>
+        <div className="si-div"/>
+        <div className="si-item"><span className="si-ico">📈</span><span className="si-val">{consistency}%</span><span className="si-lbl">Consistency</span></div>
+        {saving && <div className="si-div"/>,<div className="si-item"><div className="spin"/></div>}
+      </div>
+
+      {/* Goal bar */}
+      <div className="gbar">
+        <span className="g-txt">Goal: <strong style={{color:'var(--tx)',fontWeight:700}}>{gym}/{meta.goal||20}</strong> gym days</span>
+        <div className="g-track"><div className="g-fill" style={{width:`${pctGoal}%`}}/></div>
+        <button className="g-edit" onClick={editGoal}>Edit goal</button>
+      </div>
+
+      <main>
+        {/* Calendar nav */}
+        <div className="cal-nav fu">
+          <div className="cal-month">{MONTHS[vm]} <span className="cal-yr">{vy}</span></div>
+          <div className="cal-r">
+            <button className="nbtn" onClick={prevMonth}>‹</button>
+            <button className="nbtn" onClick={nextMonth}>›</button>
+            <button className="rbtn" onClick={resetMonth}>↺ Reset</button>
+          </div>
+        </div>
+
+        {/* Calendar card */}
+        <div className="cal-card fu" style={{animationDelay:'60ms'}}>
+          <div className="wdays">{DAYS_SH.map(d=><div key={d} className="wday">{d}</div>)}</div>
+
+          {loading ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'40px 0',gap:8}}>
+              <div className="spin"/><span style={{fontSize:'.74rem',color:'var(--tx3)'}}>Loading…</span>
+            </div>
+          ) : (
+            <div className="dgrid">
+              {Array.from({length:firstDow}).map((_,i)=><DayCell key={`e${i}`} isEmpty/>)}
+              {Array.from({length:daysInMonth}).map((_,i)=>{
+                const day=i+1;
+                const isToday  = isNow && day===now.getDate();
+                const isFuture = isNow ? day>now.getDate() : new Date(vy,vm,day)>now;
+                return (
+                  <DayCell key={day} day={day}
+                    entry={data[String(day)]}
+                    isToday={isToday} isFuture={isFuture}
+                    onClick={()=>openDay(day)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Legend */}
+          <div className="c-leg">
+            <div className="l-item"><div className="l-dot" style={{background:'var(--tx)'}}/> Gym</div>
+            <div className="l-item"><div className="l-dot" style={{background:'transparent',border:'1px dashed var(--ln2)'}}/> Rest</div>
+            <div className="l-item"><div className="l-dot" style={{background:'var(--sf2)',border:'1px solid var(--ln)'}}/> Skip</div>
+          </div>
+        </div>
+
+        {/* Smart insight */}
+        <div className="insight fu" style={{animationDelay:'110ms'}}>{insight}</div>
+      </main>
+
+      {/* FAB */}
+      {isNow && (
+        <button className="fab" onClick={markToday}>
+          <span className="fab-plus">+</span>Mark Today
+        </button>
+      )}
+
+      {/* Modals */}
+      {modal?.mode==='status' && (
+        <StatusModal
+          day={modal.day} month={vm} year={vy}
+          current={data[String(modal.day)]?.status||''}
+          onSelect={handleStatusSelect}
+          onClose={()=>setModal(null)}
+        />
+      )}
+      {modal?.mode==='workout' && (
+        <WorkoutModal
+          day={modal.day} month={vm} year={vy}
+          initSelected={data[String(modal.day)]?.workouts||[]}
+          onSave={handleWorkoutSave}
+          onClose={()=>setModal(null)}
+        />
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
